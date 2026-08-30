@@ -27,11 +27,23 @@ deliberately not part of any application stack: keep it deployed on its own, so 
 
 ## Quick start
 
-You need [uv](https://docs.astral.sh/uv/), the CDK CLI, and AWS credentials. `just` is
-optional and every command below works without it.
+Required:
+
+- [uv](https://docs.astral.sh/uv/). The CDK runs the app through it, which installs the
+  Python dependencies on first use.
+- The CDK CLI: `npm install -g aws-cdk`.
+- AWS credentials for the account you are deploying into.
+
+Optional:
+
+- The [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html),
+  for `aws sso login` and for everything under [Day to day](#day-to-day). Deploying does
+  not need it, because the CDK reads your credentials itself.
+- [just](https://github.com/casey/just), for the recipes.
+- `jq`, to build a connection URL out of the generated secret.
+- A Postgres client, to connect. `just psql` runs one in Docker instead.
 
 ```bash
-npm install -g aws-cdk
 git clone https://github.com/garyj/aws-cdk-serverless
 cd aws-cdk-serverless
 ```
@@ -57,8 +69,7 @@ cdk ls                            # your stack names, e.g. myapp-testing-databas
 cdk deploy myapp-testing-database # or: cdk deploy --all
 ```
 
-The CDK runs the app through `uv run`, which installs the Python dependencies on first
-use. Creating a cluster takes about 10 minutes. When it finishes, the stack outputs the
+Creating a cluster takes about 10 minutes. When it finishes, the stack outputs the
 endpoint, the port, and the name of the Secrets Manager secret holding the generated
 credentials.
 
@@ -92,8 +103,8 @@ aws cloudwatch get-metric-statistics --region ap-southeast-2 \
 
 That `date` call is GNU. On macOS, use `date -u -v-1H +%Y-%m-%dT%H:%M:%SZ` instead.
 
-Build a connection URL from the secret and open a session. Connecting wakes the cluster
-and resets its idle timer:
+Build a connection URL from the secret and open a session, from any machine that can
+reach the endpoint. Connecting wakes the cluster and resets its idle timer:
 
 ```bash
 url=$(aws secretsmanager get-secret-value --region ap-southeast-2 \
@@ -115,14 +126,16 @@ just endpoint     # stack outputs per environment
 just psql testing # open a session
 ```
 
-`just psql` runs `psql` in a Docker container, so you do not need a local Postgres
-client. It is the only recipe that needs Docker.
+`just psql` runs `psql` in a Docker container. It is the only recipe that needs Docker.
 
 ## Go private
 
 A public IPv4 address bills whether or not the cluster is paused, so it dominates the
 idle cost. To shed it, set `public` to `False` in the environment's row and redeploy.
-The cluster is then reachable only from the CIDRs in `ALLOWED_CIDRS`.
+A private cluster has no route in from the internet, so `psql` from your laptop stops
+working until you have peering or a VPN. `ALLOWED_CIDRS` decides which of the sources
+that can reach it are admitted; adding a home IP address to it achieves nothing on its
+own, because no route carries the packets.
 
 The usual private setup is VPC peering: peer your application's VPC with the default
 VPC the cluster lives in, add routes both ways, and put the application VPC's CIDR in
