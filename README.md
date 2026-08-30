@@ -25,39 +25,98 @@ Each cluster lands in the public subnets of its region's default VPC. This app i
 deliberately not part of any application stack: keep it deployed on its own, so a
 `cdk destroy` of your application cannot take the data with it.
 
-## Prerequisites
+## Quick start
 
-- AWS credentials configured locally.
-- The CDK CLI (`npm install -g aws-cdk`), with your account
-  [bootstrapped](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping.html) in each
-  region you deploy to.
-- [uv](https://docs.astral.sh/uv/). The CDK invokes the app through `uv run`, which
-  installs the Python dependencies on first use.
-- [just](https://github.com/casey/just) for the recipes below.
-- Docker, only for `just psql`.
+You need [uv](https://docs.astral.sh/uv/), the CDK CLI, and AWS credentials. `just` is
+optional and every command below works without it.
 
-## Deploy
+```bash
+npm install -g aws-cdk
+git clone https://github.com/garyj/aws-cdk-serverless
+cd aws-cdk-serverless
+```
 
-1. Edit `config.py`: set `PREFIX` to your project name and list your environments,
-   one `(name, region, public)` row each.
-2. Run `just diff` to see what a stack creates.
-3. Run `just deploy testing`, substituting your environment name.
+Open `config.py` and set `PREFIX` to something short and specific to your project. It
+names every stack, cluster, database, and secret. Then list your environments, one
+`DatabaseEnvironment` each, and delete the ones you do not want.
 
-The stack outputs the cluster endpoint, the port, and the name of the Secrets Manager
-secret that holds the generated credentials.
+Give the CDK credentials. Any method the AWS CLI understands works, including
+`AWS_PROFILE` and `aws sso login`:
+
+```bash
+export AWS_ACCESS_KEY_ID=AKIA...
+export AWS_SECRET_ACCESS_KEY=...
+```
+
+Bootstrap once per account and region, then deploy. Neither command needs arguments
+naming your regions, because the CDK reads them from `config.py`:
+
+```bash
+cdk bootstrap
+cdk ls                            # your stack names, e.g. myapp-testing-database
+cdk deploy myapp-testing-database # or: cdk deploy --all
+```
+
+The CDK runs the app through `uv run`, which installs the Python dependencies on first
+use. Creating a cluster takes about 10 minutes. When it finishes, the stack outputs the
+endpoint, the port, and the name of the Secrets Manager secret holding the generated
+credentials.
+
+Each cluster needs a default VPC in its region. Every AWS account starts with one, but
+if yours was deleted, recreate it with
+`aws ec2 create-default-vpc --region <region>` before deploying.
 
 ## Day to day
+
+These are plain AWS CLI calls. Substitute your own prefix, environment, and region.
+
+Read the stack outputs:
+
+```bash
+aws cloudformation describe-stacks --region ap-southeast-2 \
+    --stack-name myapp-testing-database \
+    --query 'Stacks[0].Outputs' --output table
+```
+
+Check whether a cluster has paused. `ServerlessDatabaseCapacity` reads 0 while paused,
+and reports nothing at all until the cluster has run once:
+
+```bash
+aws cloudwatch get-metric-statistics --region ap-southeast-2 \
+    --namespace AWS/RDS --metric-name ServerlessDatabaseCapacity \
+    --dimensions Name=DBClusterIdentifier,Value=myapp-testing \
+    --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
+    --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --period 60 --statistics Minimum Maximum --output table
+```
+
+That `date` call is GNU. On macOS, use `date -u -v-1H +%Y-%m-%dT%H:%M:%SZ` instead.
+
+Build a connection URL from the secret and open a session. Connecting wakes the cluster
+and resets its idle timer:
+
+```bash
+url=$(aws secretsmanager get-secret-value --region ap-southeast-2 \
+    --secret-id myapp-testing-db --query SecretString --output text \
+    | jq -r '"postgresql://\(.username):\(.password)@\(.host):\(.port)/\(.dbname)"')
+psql "$url"
+```
+
+### With just
+
+[just](https://github.com/casey/just) is a convenience, not a requirement. The recipes
+read `config.py`, so they fill in the prefix, stack names, and regions for you:
 
 ```bash
 just              # list recipes
 just status       # every cluster: paused or running
 just capacity     # ACU over the last hour; a minimum of 0 means it paused
 just endpoint     # stack outputs per environment
-just psql testing # open a session (wakes the cluster, resets its idle timer)
+just psql testing # open a session
 ```
 
-`just psql` builds a connection URL from the secret and runs `psql` in a Docker
-container, so nothing needs to be installed locally.
+`just psql` runs `psql` in a Docker container, so you do not need a local Postgres
+client. It is the only recipe that needs Docker.
 
 ## Go private
 

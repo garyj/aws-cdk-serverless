@@ -79,6 +79,14 @@ class ServerlessDatabaseStack(cdk.Stack):
         CfnOutput(self, 'CredentialsSecret', value=secret_name)
 
 
+ACCOUNT = os.environ.get('CDK_DEFAULT_ACCOUNT')
+if not ACCOUNT:
+    raise SystemExit(
+        'No AWS account resolved. The CDK CLI sets CDK_DEFAULT_ACCOUNT from your active '
+        'credentials, so check them with `aws sts get-caller-identity`, then export your '
+        'keys or set AWS_PROFILE.'
+    )
+
 app = cdk.App()
 
 for environment in ENVIRONMENTS:
@@ -91,8 +99,7 @@ for environment in ENVIRONMENTS:
         secret_name=f'{PREFIX}-{slug}-db',
         public=environment.public,
         auto_pause_duration=Duration.minutes(environment.auto_pause_minutes),
-        # The CDK CLI sets CDK_DEFAULT_ACCOUNT from the active AWS credentials.
-        env=cdk.Environment(account=os.environ['CDK_DEFAULT_ACCOUNT'], region=environment.region),
+        env=cdk.Environment(account=ACCOUNT, region=environment.region),
     )
 
 app.synth()
