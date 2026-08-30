@@ -5,6 +5,7 @@ Keep this as its own CDK app, separate from the application stacks, so a
 """
 
 import os
+from typing import Any
 
 import aws_cdk as cdk
 from aws_cdk import CfnOutput, Duration, RemovalPolicy
@@ -27,7 +28,8 @@ class ServerlessDatabaseStack(cdk.Stack):
         database_name: str,
         secret_name: str,
         public: bool,
-        **kwargs,
+        auto_pause_duration: Duration,
+        **kwargs: Any,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
@@ -46,9 +48,7 @@ class ServerlessDatabaseStack(cdk.Stack):
             # 0 is the auto-pause feature itself; 0.5 never pauses and bills ~$73/month.
             serverless_v2_min_capacity=0,
             serverless_v2_max_capacity=4,
-            # Long enough that a working session does not keep cold-starting. Staying awake
-            # the extra 45 minutes costs about 8 cents at the 0.5 ACU floor.
-            serverless_v2_auto_pause_duration=Duration.hours(1),
+            serverless_v2_auto_pause_duration=auto_pause_duration,
             port=PORT,
             default_database_name=database_name,
             credentials=rds.Credentials.from_generated_secret(
@@ -81,17 +81,18 @@ class ServerlessDatabaseStack(cdk.Stack):
 
 app = cdk.App()
 
-for env_name, region, public in ENVIRONMENTS:
-    slug = env_name.lower()
+for environment in ENVIRONMENTS:
+    slug = environment.name.lower()
     ServerlessDatabaseStack(
         app,
         f'{PREFIX}-{slug}-database',
         cluster_identifier=f'{PREFIX}-{slug}',
         database_name=f'{PREFIX}{slug}',
         secret_name=f'{PREFIX}-{slug}-db',
-        public=public,
+        public=environment.public,
+        auto_pause_duration=Duration.minutes(environment.auto_pause_minutes),
         # The CDK CLI sets CDK_DEFAULT_ACCOUNT from the active AWS credentials.
-        env=cdk.Environment(account=os.environ['CDK_DEFAULT_ACCOUNT'], region=region),
+        env=cdk.Environment(account=os.environ['CDK_DEFAULT_ACCOUNT'], region=environment.region),
     )
 
 app.synth()

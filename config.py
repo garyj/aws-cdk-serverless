@@ -1,5 +1,7 @@
 """Deployment settings. Every stack, cluster, database, and secret name derives from these."""
 
+from typing import NamedTuple
+
 # Lowercase letters and digits only; it is embedded in database names, which
 # cannot contain hyphens.
 PREFIX = 'myapp'
@@ -12,9 +14,27 @@ PORT = 36784
 # CIDRs that can reach every cluster, such as a peered application VPC.
 ALLOWED_CIDRS = ()
 
-# (name, region, public). public=True gives the writer a public IP so anything
-# can reach the endpoint; the IPv4 address bills even while the cluster is paused.
+
+class DatabaseEnvironment(NamedTuple):
+    name: str
+    region: str
+    # A public writer gets an IPv4 address, which bills even while the cluster is paused.
+    public: bool
+    # Idle minutes before the cluster pauses. Waking it again takes 15 seconds and up.
+    auto_pause_minutes: int
+
+
 ENVIRONMENTS = (
-    ('Testing', 'ap-southeast-2', True),
-    ('Staging', 'ap-southeast-1', True),
+    DatabaseEnvironment(
+        name='Testing',
+        region='ap-southeast-2',
+        public=True,
+        auto_pause_minutes=15,
+    ),
+    DatabaseEnvironment(
+        name='Staging',
+        region='ap-southeast-1',
+        public=True,
+        auto_pause_minutes=15,
+    ),
 )

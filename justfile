@@ -1,8 +1,8 @@
 set shell := ["bash", "-uc"]
 
 prefix := `python3 -c "import config; print(config.PREFIX)"`
-environments := `python3 -c "import config; print(' '.join(f'{n.lower()}:{r}' for n, r, _ in config.ENVIRONMENTS))"`
-first_env := `python3 -c "import config; print(config.ENVIRONMENTS[0][0].lower())"`
+environments := `python3 -c "import config; print(' '.join(f'{e.name.lower()}:{e.region}' for e in config.ENVIRONMENTS))"`
+first_env := `python3 -c "import config; print(config.ENVIRONMENTS[0].name.lower())"`
 
 default:
     @just --list

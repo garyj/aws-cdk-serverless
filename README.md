@@ -77,9 +77,10 @@ bills ~$73/month. A cluster also stays awake while any connection is open (a for
 `psql` session counts), or when it uses an attached RDS Proxy, logical replication,
 Global Database, zero-ETL integration with Redshift, or Babelfish.
 
-The idle timer is one hour (`serverless_v2_auto_pause_duration` in `app.py`). Long
-enough that a working session does not keep cold-starting, and the extra idle time
-costs cents.
+`auto_pause_minutes` sets the idle timer per environment, 15 minutes by default. AWS
+accepts 5 minutes to 1 day. Raise it if a work session with gaps keeps hitting cold
+starts: an idle cluster waiting to pause holds 0.5 ACU, so an extra hour awake costs
+about 6 cents.
 
 ## Destroy
 
