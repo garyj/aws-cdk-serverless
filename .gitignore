@@ -1,0 +1,5 @@
+# Contains your account ID and VPC/subnet IDs; the CDK regenerates it on synth.
+cdk.context.json
+cdk.out/
+__pycache__/
+.venv/
