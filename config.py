@@ -9,6 +9,9 @@ PREFIX = 'myapp'
 MASTER_USERNAME = 'dbadmin'
 
 # Not 5432, because the endpoint may be public and scanners look for the default.
+# For remote connection over EC2 Instance Connect Endpoint could set this to 3389
+# If setting to 3389 then make sure the instance is not public as
+# 3389 is a scan target and even failed attempts to connect will wake up the cluster.
 PORT = 36784
 
 # CIDRs that can reach every cluster, such as a peered application VPC.

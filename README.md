@@ -131,16 +131,48 @@ just psql testing # open a session
 ## Go private
 
 A public IPv4 address bills whether or not the cluster is paused, so it dominates the
-idle cost. To shed it, set `public` to `False` in the environment's row and redeploy.
-A private cluster has no route in from the internet, so `psql` from your laptop stops
-working until you have peering or a VPN. `ALLOWED_CIDRS` decides which of the sources
-that can reach it are admitted; adding a home IP address to it achieves nothing on its
-own, because no route carries the packets.
+idle cost. To shed it, set `public` to `False` for that environment and redeploy.
+A private cluster has no route in from the internet, so nothing reaches it from a laptop
+without peering or a VPN. Of the sources that can reach it, `ALLOWED_CIDRS` decides which
+are admitted; a home IP address there achieves nothing on its own, because no route
+carries the packets.
 
 The usual private setup is VPC peering: peer your application's VPC with the default
 VPC the cluster lives in, add routes both ways, and put the application VPC's CIDR in
 `ALLOWED_CIDRS`. The peering itself belongs to your application's network stacks, not
 here.
+
+### Reaching a private cluster from a laptop
+
+Peering serves your application, not your `psql` session. There are three ways in.
+
+**SSM Session Manager port forwarding** works on any port, but needs an EC2 instance
+running the SSM agent inside the VPC. The cheapest such instance costs more per month
+than a public IPv4 address, so it saves nothing over leaving the cluster public.
+
+**EC2 Instance Connect Endpoint** costs nothing and needs no instance, but it accepts
+only two remote ports. Tunnelling to 36784 fails with `The specified RemotePort is not
+valid. Specify either 22 or 3389 as the RemotePort`. RDS rejects port 22, so the only
+way through is to run Postgres on 3389:
+
+```bash
+aws ec2-instance-connect open-tunnel \
+    --instance-connect-endpoint-id eice-0123456789abcdef0 \
+    --private-ip-address "$(dig +short <cluster-endpoint> | tail -1)" \
+    --remote-port 3389 --local-port 13389
+psql "postgresql://dbadmin:...@127.0.0.1:13389/myapptesting"
+```
+
+That path is tested and carries a normal session, writes included. AWS caps each tunnel
+at one hour, throttles anything resembling a bulk transfer, and documents the endpoint
+as targeting EC2 instances rather than databases, so treat it as a convenience for
+occasional access rather than a data path. One trap: the tunnel opens its local port
+before the connection is authorized, so a listening port is not proof of a working
+tunnel.
+
+**RDS Data API** needs no network path at all, just IAM over HTTPS, and a request wakes a
+paused cluster. It is not `psql`, though: one statement per call, JSON back, no
+interactive session. Enable it with `enable_data_api` on the cluster.
 
 ## What stops a cluster pausing
 
